@@ -6,7 +6,6 @@ import pandas as pd
 import torch
 
 from sklearn.linear_model import Ridge
-from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 
 from sequence_dataset import build_client_datasets
@@ -21,6 +20,9 @@ CLIENT_FILES = [
     "client_4_holding_refinery.csv",
     "client_5_steel_retail.csv",
 ]
+
+
+META_TRAIN_RATIO = 0.7
 
 
 def set_seed(seed=42):
@@ -124,6 +126,36 @@ def load_final_local_weights(clients, device):
     return local_weights
 
 
+def chronological_meta_split_by_ticker(
+    features,
+    targets,
+    ticker_ids,
+    train_ratio=META_TRAIN_RATIO,
+):
+    train_indices = []
+    evaluation_indices = []
+
+    for ticker_id in np.unique(ticker_ids):
+        ticker_indices = np.where(ticker_ids == ticker_id)[0]
+        ticker_indices = np.sort(ticker_indices)
+
+        split_index = int(len(ticker_indices) * train_ratio)
+
+        train_indices.extend(ticker_indices[:split_index])
+        evaluation_indices.extend(ticker_indices[split_index:])
+
+    train_indices = np.array(train_indices)
+    evaluation_indices = np.array(evaluation_indices)
+
+    x_meta_train = features[train_indices]
+    y_meta_train = targets[train_indices]
+
+    x_meta_eval = features[evaluation_indices]
+    y_meta_eval = targets[evaluation_indices]
+
+    return x_meta_train, x_meta_eval, y_meta_train, y_meta_eval
+
+
 def run_fedstack():
     set_seed(42)
 
@@ -169,55 +201,68 @@ def run_fedstack():
             server.get_global_weights()
         )
 
+        ticker_ids = client.test_dataset.ticker_ids.detach().cpu().numpy()
+
         stack_features = np.concatenate(
             [local_pred, global_pred],
             axis=1,
         )
 
-        x_meta_train, x_meta_test, y_meta_train, y_meta_test = train_test_split(
-            stack_features,
-            targets,
-            test_size=0.5,
-            random_state=42,
-            shuffle=True,
+        x_meta_train, x_meta_eval, y_meta_train, y_meta_eval = (
+            chronological_meta_split_by_ticker(
+                stack_features,
+                targets,
+                ticker_ids,
+                train_ratio=META_TRAIN_RATIO,
+            )
+        )
+
+        print(
+            f"Meta split: train={len(y_meta_train)}, "
+            f"evaluation={len(y_meta_eval)}"
         )
 
         meta_model = Ridge(alpha=1.0)
-        meta_model.fit(x_meta_train, y_meta_train.ravel())
+        meta_model.fit(
+            x_meta_train,
+            y_meta_train.ravel(),
+        )
 
-        stacked_pred = meta_model.predict(x_meta_test).reshape(-1, 1)
+        fedstack_pred = meta_model.predict(
+            x_meta_eval
+        ).reshape(-1, 1)
 
-        local_test_pred = x_meta_test[:, 0].reshape(-1, 1)
-        global_test_pred = x_meta_test[:, 1].reshape(-1, 1)
+        local_eval_pred = x_meta_eval[:, 0].reshape(-1, 1)
+        global_eval_pred = x_meta_eval[:, 1].reshape(-1, 1)
 
         local_metrics = evaluate_predictions(
-            y_meta_test,
-            local_test_pred,
+            y_meta_eval,
+            local_eval_pred,
         )
 
         global_metrics = evaluate_predictions(
-            y_meta_test,
-            global_test_pred,
+            y_meta_eval,
+            global_eval_pred,
         )
 
-        stacked_metrics = evaluate_predictions(
-            y_meta_test,
-            stacked_pred,
+        fedstack_metrics = evaluate_predictions(
+            y_meta_eval,
+            fedstack_pred,
         )
 
         improvement_over_local = safe_improvement_percentage(
             local_metrics["rmse"],
-            stacked_metrics["rmse"],
+            fedstack_metrics["rmse"],
         )
 
         improvement_over_global = safe_improvement_percentage(
             global_metrics["rmse"],
-            stacked_metrics["rmse"],
+            fedstack_metrics["rmse"],
         )
 
         print(f"Local RMSE: {local_metrics['rmse']:.6f}")
         print(f"Global RMSE: {global_metrics['rmse']:.6f}")
-        print(f"FedStack RMSE: {stacked_metrics['rmse']:.6f}")
+        print(f"FedStack RMSE: {fedstack_metrics['rmse']:.6f}")
 
         print(
             f"FedStack improvement over Local RMSE: "
@@ -240,9 +285,9 @@ def run_fedstack():
             "global_rmse": global_metrics["rmse"],
             "global_mae": global_metrics["mae"],
 
-            "fedstack_mse": stacked_metrics["mse"],
-            "fedstack_rmse": stacked_metrics["rmse"],
-            "fedstack_mae": stacked_metrics["mae"],
+            "fedstack_mse": fedstack_metrics["mse"],
+            "fedstack_rmse": fedstack_metrics["rmse"],
+            "fedstack_mae": fedstack_metrics["mae"],
 
             "fedstack_improvement_over_local_rmse": improvement_over_local,
             "fedstack_improvement_over_global_rmse": improvement_over_global,

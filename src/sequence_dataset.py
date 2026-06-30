@@ -1,7 +1,8 @@
 import os
-import pandas as pd
 import numpy as np
+import pandas as pd
 import torch
+
 from torch.utils.data import Dataset
 from sklearn.preprocessing import StandardScaler
 
@@ -18,6 +19,7 @@ TICKER_TO_ID = {
     "BIMAS.IS": 8,
     "FROTO.IS": 9,
 }
+
 
 NUM_TICKERS = len(TICKER_TO_ID)
 
@@ -86,6 +88,9 @@ def create_sequences_for_ticker(
 ):
     ticker_df = ticker_df.sort_values("Date").reset_index(drop=True).copy()
 
+    needed_columns = SEQUENCE_FEATURES + STATIC_FEATURES + [TARGET_COLUMN]
+    ticker_df = ticker_df.dropna(subset=needed_columns).reset_index(drop=True)
+
     sequence_data = ticker_df[SEQUENCE_FEATURES].values
     static_data = ticker_df[STATIC_FEATURES].values
     target_data = ticker_df[[TARGET_COLUMN]].values
@@ -108,8 +113,8 @@ def create_sequences_for_ticker(
     ticker_ids = []
     targets = []
 
-    for i in range(sequence_length, len(ticker_df)):
-        sequence_window = sequence_data[i - sequence_length:i]
+    for i in range(sequence_length - 1, len(ticker_df)):
+        sequence_window = sequence_data[i - sequence_length + 1:i + 1]
         static_vector = static_data[i]
         target = target_data[i]
 
@@ -136,6 +141,9 @@ def train_test_split_by_time(df, test_ratio=0.2):
 
     train_df = df.iloc[:split_index].copy()
     test_df = df.iloc[split_index:].copy()
+
+    if len(train_df) > 0:
+        train_df = train_df.iloc[:-1].copy()
 
     return train_df, test_df
 

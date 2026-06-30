@@ -164,7 +164,6 @@ python src/dataset.py
 python src/client_split.py
 python src/federated_train.py
 python src/fedstack.py
-python src/naive_baseline.py
 python src/merge_results.py
 python src/plot_results.py
 ```

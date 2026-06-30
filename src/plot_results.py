@@ -1,5 +1,4 @@
 import os
-
 import pandas as pd
 import matplotlib.pyplot as plt
 
@@ -18,14 +17,14 @@ def plot_rmse_comparison(results_df):
         [i - width for i in x],
         results_df["local_rmse"],
         width=width,
-        label="Local Model",
+        label="Local",
     )
 
     plt.bar(
         x,
         results_df["global_rmse"],
         width=width,
-        label="Global Federated Model",
+        label="Global",
     )
 
     plt.bar(
@@ -35,7 +34,7 @@ def plot_rmse_comparison(results_df):
         label="FedStack",
     )
 
-    plt.xticks(x, clients, rotation=25, ha="right")
+    plt.xticks(x, clients, rotation=30, ha="right")
     plt.ylabel("RMSE")
     plt.title("RMSE Comparison: Local vs Global vs FedStack")
     plt.legend()
@@ -48,7 +47,7 @@ def plot_rmse_comparison(results_df):
     print(f"Saved: {output_path}")
 
 
-def plot_improvement_comparison(results_df):
+def plot_fedstack_improvements(results_df):
     os.makedirs("results/plots", exist_ok=True)
 
     clients = results_df["client_id"]
@@ -62,23 +61,25 @@ def plot_improvement_comparison(results_df):
         [i - width / 2 for i in x],
         results_df["fedstack_improvement_over_local_rmse"],
         width=width,
-        label="Improvement over Local",
+        label="Over Local",
     )
 
     plt.bar(
         [i + width / 2 for i in x],
         results_df["fedstack_improvement_over_global_rmse"],
         width=width,
-        label="Improvement over Global",
+        label="Over Global",
     )
 
-    plt.xticks(x, clients, rotation=25, ha="right")
+    plt.axhline(0, linewidth=1)
+
+    plt.xticks(x, clients, rotation=30, ha="right")
     plt.ylabel("RMSE Improvement (%)")
-    plt.title("FedStack Improvement Over Baselines")
+    plt.title("FedStack RMSE Improvement over Learned Models")
     plt.legend()
     plt.tight_layout()
 
-    output_path = "results/plots/fedstack_improvement.png"
+    output_path = "results/plots/fedstack_improvements.png"
     plt.savefig(output_path, dpi=300)
     plt.close()
 
@@ -89,15 +90,12 @@ def main():
     results_path = "results/fedstack_results.csv"
 
     if not os.path.exists(results_path):
-        raise FileNotFoundError(
-            "results/fedstack_results.csv not found. "
-            "Run fedstack.py first."
-        )
+        raise FileNotFoundError("Run fedstack.py first.")
 
     results_df = pd.read_csv(results_path)
 
     plot_rmse_comparison(results_df)
-    plot_improvement_comparison(results_df)
+    plot_fedstack_improvements(results_df)
 
 
 if __name__ == "__main__":

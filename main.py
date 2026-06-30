@@ -71,7 +71,6 @@ def main() -> None:
             run_script("src/federated_train.py")
 
         run_script("src/fedstack.py")
-        run_script("src/naive_baseline.py")
         run_script("src/merge_results.py")
         run_script("src/plot_results.py")
 
